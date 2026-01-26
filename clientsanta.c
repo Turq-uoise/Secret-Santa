@@ -12,6 +12,10 @@
 
 int main(void){
     // Get random name
+    char giftee[20];
+    char reg[20] = "REGISTER ";
+    char draw[5] = "DRAW";
+    char getter[5] = "GET ";
     char names[5][10] = {"Rudolph", "Nick", "Jesus", "Jack", "Will"};
     char buffer[1024];
     char name[20];
@@ -36,10 +40,30 @@ int main(void){
     // Check connection
     if(ret == 0) {
         // Send name to server
-        send(sd, name, sizeof(name), 0);
+        char registry[100];
 
-        // Get giftee from server (tentative)
-        send(sd, "Get giftee", 20, 0);
+        sprintf(registry, "%s%s", reg, name);
+ 
+        printf("%s\n", registry);
+        send(sd, registry, sizeof(registry), 0);
+
+
+        //start draw
+        send(sd, "DRAW", 4, 0);
+        
+        //Get giftee from server (tentative)
+
+        char get[100];
+        sprintf(get, "%s%s", getter, name);
+ 
+        printf("%s\n", get);
+        send(sd, get, sizeof(get), 0);
+
+  
+
+        // get giftee info
+        sprintf(giftee, "%s%s", "GET ", name);
+        send(sd, giftee, sizeof(giftee), 0);
 
         // Receive giftee info from server
         while((ret = recv(sd, buffer, sizeof(buffer) - 1, 0)) > 0) {

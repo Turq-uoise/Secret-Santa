@@ -69,7 +69,7 @@ int main() {
 
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(5000);
+    server_addr.sin_port = htons(4242);
     server_addr.sin_addr.s_addr = INADDR_ANY;
 
     bind(server_sd, (struct sockaddr*)&server_addr, sizeof(server_addr));
@@ -97,7 +97,9 @@ int main() {
 
             // REGISTER <name>
             if (strncmp(buffer, "REGISTER ", 9) == 0) {
+                printf("Participant registered.\n");
                 if (draw_done) {
+                    
                     send(client_sd, "DRAW_ALREADY_DONE\n", 18, 0);
                 } else {
                     char *name = buffer + 9;
@@ -107,7 +109,9 @@ int main() {
                     } else {
                         strcpy(participants[count], name);
                         count++;
+                        
                         send(client_sd, "REGISTERED\n", 11, 0);
+                        
                     }
                 }
             }
