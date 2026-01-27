@@ -110,7 +110,8 @@ int main() {
                         strcpy(participants[count], name);
                         count++;
                         
-                        send(client_sd, "REGISTERED\n", 11, 0);
+                        send(client_sd, giftees, 50, 0);
+                        // send(client_sd, "REGISTERED\n", 11, 0);
                         
                     }
                 }

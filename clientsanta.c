@@ -16,7 +16,7 @@ int main(void){
     char reg[20] = "REGISTER ";
     char draw[5] = "DRAW";
     char getter[5] = "GET ";
-    char names[5][10] = {"Rudolph", "Nick", "Jesus", "Jack", "Will"};
+    char names[5][10] = {"Rudolph"};
     char buffer[1024];
     char name[20];
     char firstname[10];
@@ -24,7 +24,7 @@ int main(void){
     srand(time(NULL));
     strcpy(firstname, names[rand() % ARR_SIZE(names)]);
     strcpy(lastname, names[rand() % ARR_SIZE(names)]);
-    strcpy(name, strcat(firstname, lastname));
+    sprintf(name, "%s %s", firstname, lastname);
     printf("My name is %s.\n", name);
     
     // Set up socket and connect
