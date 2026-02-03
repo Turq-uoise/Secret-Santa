@@ -9,8 +9,16 @@
 #define MAX 100
 #define NAME_LEN 50
 
-char participants[MAX][NAME_LEN];
-char giftees[MAX][NAME_LEN];
+typedef struct Participant {
+    char santa_name[NAME_LEN];
+    int santa_sd;
+    char giftee[NAME_LEN];
+} Participant;
+
+Participant participants[MAX];
+
+// char participants[MAX][NAME_LEN];
+// char giftees[MAX][NAME_LEN];
 int count = 0;
 int draw_done = 0;
 
@@ -24,7 +32,7 @@ void swap(int *a, int *b) { //swaps two ints
 // find participant index
 int find_participant(char *name) {
     for (int i = 0; i < count; i++) {
-        if (strcmp(participants[i], name) == 0) {
+        if (strcmp(participants[i].santa_name, name) == 0) {
             return i;
         }
     }
@@ -56,108 +64,144 @@ void do_draw() {
     }
 
     for (int i = 0; i < count; i++) {
-        strcpy(giftees[i], participants[order[i]]);
+        strcpy(participants[i].giftee, participants[order[i]].santa_name);
+        printf("%s got %s\n", participants[i].santa_name, participants[i].giftee);
     }
 
     draw_done = 1;
+    for (int i = 0; i < count; i++){
+        send(participants[i].santa_sd, "DRAWN", 6, 0);
+    }
 }
 
 int main() {
     srand(getpid());
 
+    int ret;
+    int yes = 1;
+
     int server_sd = socket(AF_INET, SOCK_STREAM, 0);
+    setsockopt(server_sd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(4242);
     server_addr.sin_addr.s_addr = INADDR_ANY;
 
-    bind(server_sd, (struct sockaddr*)&server_addr, sizeof(server_addr));
-    listen(server_sd, 10);
+    ret = bind(server_sd, (struct sockaddr*)&server_addr, sizeof(server_addr));
+    if (ret != 0) {
+        perror("bind");
+        return EXIT_FAILURE;
+    }
+
+    ret = listen(server_sd, 10);
+    if (ret != 0) {
+        perror("listen");
+        return EXIT_FAILURE;
+    }
 
     printf("Secret Santa Server running...\n");
 
     while (1) {
         struct sockaddr_in client_addr;
         socklen_t client_len = sizeof(client_addr);
-
-        int client_sd = accept(server_sd, (struct sockaddr*)&client_addr, &client_len);
-        printf("Client connected.\n");
-
-        pid_t pid = fork();
-
-        if (pid == 0) {
-            close(server_sd);
-
-            char buffer[256];
-            memset(buffer, 0, sizeof(buffer));
+        
+        char buffer[256] = {0};
+        memset(buffer, 0, sizeof(buffer));
+        
+        if (!draw_done){
+            int client_sd = accept(server_sd, (struct sockaddr*)&client_addr, &client_len);
+            printf("Client connected to socket %d.\n", client_sd);
             recv(client_sd, buffer, sizeof(buffer), 0);
-
             printf("Received: %s\n", buffer);
-
-            // REGISTER <name>
-            if (strncmp(buffer, "REGISTER ", 9) == 0) {
+            
+            if (strncmp(buffer, "REGISTER", strlen("REGISTER")) == 0) {
                 printf("Participant registered.\n");
                 if (draw_done) {
                     
                     send(client_sd, "DRAW_ALREADY_DONE\n", 18, 0);
                 } else {
-                    char *name = buffer + 9;
-
+                    char *name = buffer + strlen("REGISTER ");
+                    
+                    // If participant name doesnt exist, find_participant returns -1
                     if (find_participant(name) != -1) {
                         send(client_sd, "NAME_EXISTS\n", 12, 0);
                     } else {
-                        strcpy(participants[count], name);
+                        strcpy(participants[count].santa_name, name);
+                        participants[count].santa_sd = client_sd; 
                         count++;
                         
-                        send(client_sd, giftees, 50, 0);
-                        // send(client_sd, "REGISTERED\n", 11, 0);
+                        // send(client_sd, giftees, 50, 0);
+                        send(client_sd, "REGISTERED\n", 11, 0);
+                        
+                        // START DRAW
+                        if (count >= 3){
+                            printf("Draw started on server.\n");
+                            do_draw();
+                        }
                         
                     }
                 }
             }
+        }
 
-            
-            else if (strcmp(buffer, "DRAW") == 0) {
-                if (draw_done) {
-                    send(client_sd, "DRAW_ALREADY_DONE\n", 18, 0);
-                } else if (count < 2) {
-                    send(client_sd, "NOT_ENOUGH_PARTICIPANTS\n", 24, 0);
-                } else {
-                    do_draw();
-                    send(client_sd, "DRAW_COMPLETE\n", 14, 0);
-                }
-            }
-
-            // GET <name>
-            else if (strncmp(buffer, "GET ", 4) == 0) {
-                if (!draw_done) {
-                    send(client_sd, "DRAW_NOT_DONE\n", 14, 0);
-                } else {
-                    char *name = buffer + 4;
-                    int idx = find_participant(name);
-
-                    if (idx == -1) {
-                        send(client_sd, "UNKNOWN_NAME\n", 13, 0);
+        else {
+            // for (int i = 0; i < sizeof(participants); i++){ //sizeofparticipants is TOO BIG (10800) and gets looped to infinity.
+            for (size_t i = 0; participants[i].santa_name[0] != '\0'; i++) {
+                recv(participants[i].santa_sd, buffer, sizeof(buffer), 0);
+                if (strncmp(buffer, "GET ", strlen("GET ")) == 0) {
+                    if (!draw_done) {
+                        send(participants[i].santa_sd, "DRAW_NOT_DONE\n", 14, 0);
                     } else {
-                        char reply[256];
-                        sprintf(reply, "GIFTEE %s\n", giftees[idx]);
-                        send(client_sd, reply, strlen(reply), 0);
+                        char *name = buffer + strlen("GET ");
+                        printf("%s asked for giftee\n", name);
+                        int idx = find_participant(name);
+        
+                        if (idx == -1) {
+                            send(participants[idx].santa_sd, "UNKNOWN_NAME\n", 13, 0);
+                        } else {
+                            char reply[256];
+                            sprintf(reply, "%s\n", participants[idx].giftee);
+                            send(participants[idx].santa_sd, reply, strlen(reply), 0);
+                        }
                     }
                 }
             }
-
-            else {
-                send(client_sd, "UNKNOWN_COMMAND\n", 16, 0);
-            }
-
-            close(client_sd);
-            exit(0);
+            close(server_sd);
+            break;
         }
 
-        close(client_sd);
-    }
+        
+        //pid_t pid = fork();
+        
+        //if (pid == 0) {
+            //close(server_sd);
+            
 
+
+        // REGISTER <name>
+
+        // DRAW (unused)
+        // else if (strncmp(buffer, "DRAW", strlen("DRAW")) == 0) {
+        //     if (draw_done) {
+        //         send(client_sd, "DRAW_ALREADY_DONE\n", 18, 0);
+        //     } else if (count < 2) {
+        //         send(client_sd, "NOT_ENOUGH_PARTICIPANTS\n", 24, 0);
+        //     } else {
+        //         do_draw();
+        //         send(client_sd, "DRAW_COMPLETE\n", 14, 0);
+        //     }
+        // }
+
+        // GET <name>
+
+        // else {
+        //     send(client_sd, "UNKNOWN_COMMAND\n", 16, 0);
+        // }
+        
+        //}
+    }
+    
     close(server_sd);
     return 0;
 }
